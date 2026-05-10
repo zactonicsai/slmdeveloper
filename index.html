@@ -1,0 +1,1057 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GroceryGPT — How it works</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700;9..144,900&family=JetBrains+Mono:wght@400;500&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          paper:    '#f6f1e6',
+          paper2:   '#efe7d4',
+          ink:      '#1f2a1a',
+          inkSoft:  '#4a553f',
+          leaf:     '#2f5d3a',
+          leafDeep: '#1c3f24',
+          tomato:   '#c8442a',
+          citrus:   '#e9a73a',
+          line:     '#2f2a20',
+        },
+        fontFamily: {
+          display: ['Fraunces', 'ui-serif', 'Georgia', 'serif'],
+          body:    ['"Inter Tight"', 'system-ui', 'sans-serif'],
+          mono:    ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        },
+      }
+    }
+  }
+</script>
+
+<style>
+  body {
+    background:
+      radial-gradient(1200px 600px at 90% -10%, rgba(233,167,58,0.12), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(47,93,58,0.10), transparent 60%),
+      #f6f1e6;
+    color: #1f2a1a;
+    font-feature-settings: "ss01", "cv11";
+  }
+  body::before {
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image: radial-gradient(rgba(31,42,26,0.04) 1px, transparent 1px);
+    background-size: 3px 3px;
+    mix-blend-mode: multiply;
+  }
+  .wrap { position: relative; z-index: 1; }
+
+  /* code blocks */
+  pre, code { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  pre { tab-size: 2; }
+
+  /* anchor offset */
+  section { scroll-margin-top: 80px; }
+
+  /* gentle reveal */
+  .reveal { animation: rise .6s ease both; }
+  @keyframes rise { from { opacity:0; transform: translateY(8px); } }
+
+  /* svg defaults */
+  .diagram { width: 100%; height: auto; max-height: 520px; }
+  .diagram text { font-family: "Inter Tight", sans-serif; }
+
+  /* anchor link */
+  a.anchor { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+  a.anchor:hover { color: #c8442a; }
+
+  /* copy button */
+  .copy-btn { transition: all .2s; }
+  .copy-btn.copied { background: #2f5d3a; color: #f6f1e6; }
+</style>
+</head>
+
+<body class="font-body">
+<div class="wrap">
+
+<!-- ============ NAV ============ -->
+<nav class="sticky top-0 z-20 backdrop-blur-md bg-paper/80 border-b border-line">
+  <div class="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+    <a href="#top" class="font-display font-black text-2xl text-leafDeep">
+      Grocery<em class="text-tomato not-italic">GPT</em>
+      <span class="font-mono text-[10px] uppercase tracking-[0.2em] text-inkSoft ml-2 hidden sm:inline">field guide</span>
+    </a>
+    <div class="hidden md:flex gap-5 text-sm">
+      <a href="#big-picture"  class="hover:text-tomato">Big picture</a>
+      <a href="#fine-tuning"  class="hover:text-tomato">Fine-tuning</a>
+      <a href="#pipeline"     class="hover:text-tomato">Pipeline</a>
+      <a href="#running"      class="hover:text-tomato">Run it</a>
+      <a href="#manual-tests" class="hover:text-tomato">Manual tests</a>
+      <a href="#test-data"    class="hover:text-tomato">Test data</a>
+    </div>
+    <a href="/" class="inline-flex items-center gap-2 bg-leafDeep text-paper text-sm font-semibold px-3 py-1.5 rounded-lg hover:bg-ink transition">
+      open chat →
+    </a>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<header id="top" class="max-w-6xl mx-auto px-6 pt-16 pb-12 reveal">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-inkSoft mb-6">A field guide · vol. 1</div>
+  <h1 class="font-display font-black text-leafDeep leading-[0.9] tracking-tight"
+      style="font-size: clamp(48px, 8vw, 96px);">
+    How a tiny model<br>learns to talk<br><em class="text-tomato font-medium">about produce.</em>
+  </h1>
+  <p class="mt-8 max-w-2xl text-lg md:text-xl text-inkSoft leading-relaxed">
+    GroceryGPT is a small language model that's been gently nudged
+    into knowing about fruits and vegetables — picking ripe ones, storing them,
+    what to do with that lonely chayote. This page explains how it's built,
+    how to run it, and how to <span class="font-semibold text-ink">test it yourself</span>.
+  </p>
+  <div class="mt-10 flex flex-wrap gap-3">
+    <span class="px-3 py-1 rounded-full border border-line text-xs font-mono uppercase tracking-wider">CPU only</span>
+    <span class="px-3 py-1 rounded-full border border-line text-xs font-mono uppercase tracking-wider">135M params</span>
+    <span class="px-3 py-1 rounded-full border border-line text-xs font-mono uppercase tracking-wider">LoRA r=8</span>
+    <span class="px-3 py-1 rounded-full border border-line text-xs font-mono uppercase tracking-wider">~270 MB GGUF</span>
+    <span class="px-3 py-1 rounded-full border border-line text-xs font-mono uppercase tracking-wider">Docker Compose</span>
+  </div>
+</header>
+
+<!-- ============ TL;DR ============ -->
+<section class="max-w-6xl mx-auto px-6 py-12">
+  <div class="grid md:grid-cols-12 gap-8 items-start">
+    <div class="md:col-span-4">
+      <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 01</div>
+      <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep">
+        The 60-second<br>version.
+      </h2>
+    </div>
+    <div class="md:col-span-8 text-lg leading-relaxed space-y-5">
+      <p>We start with an existing tiny model — a "small language model" called
+        <strong>SmolLM2-135M</strong>. Think of it as a generally-educated
+        recent grad: it knows English, can hold a conversation, but has no
+        special expertise.</p>
+      <p>We then show it about <strong>65 worked examples</strong> of how a
+        grocery expert answers produce questions — picking, storing,
+        substitutions. We don't retrain the whole model (that would take
+        days). Instead we use a technique called <strong>LoRA</strong>
+        that trains a tiny "adapter" alongside the frozen original. The adapter
+        learns the new style and content; the base model stays untouched.</p>
+      <p>After training we <strong>merge</strong> the adapter back into the base,
+        <strong>convert</strong> the result to the format Ollama uses (called
+        GGUF), and <strong>load</strong> it into an Ollama server running in
+        Docker. A simple HTML chat page talks to it. That's the whole stack.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BIG PICTURE ============ -->
+<section id="big-picture" class="max-w-6xl mx-auto px-6 py-16 border-t border-line">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 02</div>
+  <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep mb-3">
+    The big picture.
+  </h2>
+  <p class="text-lg text-inkSoft max-w-3xl mb-10">
+    Four moving parts in two phases. Build once, then run.
+  </p>
+
+  <!-- Architecture SVG -->
+  <div class="bg-white/60 border border-line rounded-2xl p-6 md:p-10 shadow-sm">
+    <svg class="diagram" viewBox="0 0 900 540" xmlns="http://www.w3.org/2000/svg">
+      <!-- defs -->
+      <defs>
+        <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L9,3 z" fill="#1f2a1a"/>
+        </marker>
+        <marker id="arrow-leaf" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L9,3 z" fill="#2f5d3a"/>
+        </marker>
+        <marker id="arrow-tomato" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L9,3 z" fill="#c8442a"/>
+        </marker>
+      </defs>
+
+      <!-- phase labels -->
+      <text x="20" y="35" font-size="11" font-family="JetBrains Mono" letter-spacing="2" fill="#c8442a">PHASE 1 — BUILD (one-shot)</text>
+      <line x1="20" y1="45" x2="430" y2="45" stroke="#c8442a" stroke-width="1" stroke-dasharray="3,3"/>
+
+      <text x="470" y="35" font-size="11" font-family="JetBrains Mono" letter-spacing="2" fill="#2f5d3a">PHASE 2 — SERVE (continuous)</text>
+      <line x1="470" y1="45" x2="880" y2="45" stroke="#2f5d3a" stroke-width="1" stroke-dasharray="3,3"/>
+
+      <!-- TRAINER -->
+      <g>
+        <rect x="40" y="80" width="280" height="170" rx="12" fill="#fffaf0" stroke="#1f2a1a" stroke-width="1.5"/>
+        <text x="60" y="110" font-size="13" font-family="JetBrains Mono" fill="#c8442a" letter-spacing="1">TRAINER (one-shot)</text>
+        <text x="60" y="138" font-size="16" font-weight="600">📚 dataset.jsonl</text>
+        <text x="80" y="158" font-size="12" fill="#4a553f">↓ 65 Q&amp;A examples</text>
+        <text x="60" y="180" font-size="16" font-weight="600">🔧 LoRA fine-tune</text>
+        <text x="80" y="200" font-size="12" fill="#4a553f">↓ merge into base</text>
+        <text x="60" y="222" font-size="16" font-weight="600">📦 convert to GGUF</text>
+        <text x="60" y="242" font-size="12" fill="#4a553f">~5–15 min on CPU</text>
+      </g>
+
+      <!-- arrow trainer -> output -->
+      <path d="M 320 165 L 400 165" stroke="#c8442a" stroke-width="2" fill="none" marker-end="url(#arrow-tomato)"/>
+
+      <!-- OUTPUT VOLUME (middle) -->
+      <g>
+        <rect x="400" y="100" width="180" height="130" rx="10" fill="#efe7d4" stroke="#1f2a1a" stroke-width="1.5" stroke-dasharray="4,3"/>
+        <text x="490" y="125" font-size="11" font-family="JetBrains Mono" fill="#1f2a1a" letter-spacing="1.5" text-anchor="middle">./output/</text>
+        <text x="490" y="155" font-size="14" font-weight="600" text-anchor="middle">grocery-slm.gguf</text>
+        <text x="490" y="175" font-size="11" fill="#4a553f" text-anchor="middle">≈ 270 MB</text>
+        <text x="490" y="205" font-size="14" font-weight="600" text-anchor="middle">Modelfile</text>
+        <text x="490" y="223" font-size="11" fill="#4a553f" text-anchor="middle">recipe for ollama</text>
+      </g>
+
+      <!-- arrow output -> ollama -->
+      <path d="M 580 165 L 660 165" stroke="#2f5d3a" stroke-width="2" fill="none" marker-end="url(#arrow-leaf)"/>
+
+      <!-- OLLAMA -->
+      <g>
+        <rect x="660" y="80" width="220" height="170" rx="12" fill="#fffaf0" stroke="#1f2a1a" stroke-width="1.5"/>
+        <text x="680" y="110" font-size="13" font-family="JetBrains Mono" fill="#2f5d3a" letter-spacing="1">OLLAMA :11434</text>
+        <text x="680" y="138" font-size="16" font-weight="600">🦙 daemon</text>
+        <text x="700" y="158" font-size="12" fill="#4a553f">runs the model</text>
+        <text x="680" y="182" font-size="16" font-weight="600">🌱 ollama-init</text>
+        <text x="700" y="202" font-size="12" fill="#4a553f">registers via</text>
+        <text x="700" y="218" font-size="11" fill="#4a553f" font-family="JetBrains Mono">ollama create grocery-slm</text>
+        <text x="700" y="238" font-size="11" fill="#4a553f" font-family="JetBrains Mono">  -f Modelfile</text>
+      </g>
+
+      <!-- WEBUI -->
+      <g>
+        <rect x="540" y="320" width="240" height="120" rx="12" fill="#fffaf0" stroke="#1f2a1a" stroke-width="1.5"/>
+        <text x="560" y="348" font-size="13" font-family="JetBrains Mono" fill="#2f5d3a" letter-spacing="1">WEBUI :8080</text>
+        <text x="560" y="375" font-size="16" font-weight="600">📰 nginx</text>
+        <text x="580" y="395" font-size="12" fill="#4a553f">serves index.html</text>
+        <text x="580" y="412" font-size="12" fill="#4a553f">proxies /api/* → ollama</text>
+        <text x="580" y="429" font-size="12" fill="#4a553f">streams tokens via NDJSON</text>
+      </g>
+
+      <!-- BROWSER -->
+      <g>
+        <circle cx="160" cy="380" r="60" fill="#1c3f24" stroke="#1f2a1a" stroke-width="1.5"/>
+        <text x="160" y="375" font-size="14" font-weight="600" fill="#f6f1e6" text-anchor="middle">browser</text>
+        <text x="160" y="395" font-size="11" fill="#efe7d4" text-anchor="middle" font-family="JetBrains Mono">localhost:8080</text>
+      </g>
+
+      <!-- arrows browser -> webui -->
+      <path d="M 220 380 L 535 380" stroke="#1f2a1a" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+      <text x="375" y="370" font-size="11" font-family="JetBrains Mono" fill="#4a553f" text-anchor="middle">user prompt</text>
+      <path d="M 535 400 L 220 400" stroke="#2f5d3a" stroke-width="2" fill="none" marker-end="url(#arrow-leaf)"/>
+      <text x="375" y="418" font-size="11" font-family="JetBrains Mono" fill="#2f5d3a" text-anchor="middle">streaming tokens</text>
+
+      <!-- arrow webui -> ollama -->
+      <path d="M 660 350 L 770 280" stroke="#2f5d3a" stroke-width="2" fill="none" marker-end="url(#arrow-leaf)"/>
+      <text x="690" y="305" font-size="11" font-family="JetBrains Mono" fill="#2f5d3a">/api/chat</text>
+
+      <!-- legend -->
+      <g transform="translate(20, 480)">
+        <line x1="0" y1="10" x2="30" y2="10" stroke="#c8442a" stroke-width="2"/>
+        <text x="40" y="14" font-size="11" font-family="JetBrains Mono" fill="#4a553f">build artifact</text>
+        <line x1="160" y1="10" x2="190" y2="10" stroke="#2f5d3a" stroke-width="2"/>
+        <text x="200" y="14" font-size="11" font-family="JetBrains Mono" fill="#4a553f">model output / serving</text>
+        <line x1="380" y1="10" x2="410" y2="10" stroke="#1f2a1a" stroke-width="2"/>
+        <text x="420" y="14" font-size="11" font-family="JetBrains Mono" fill="#4a553f">user request</text>
+      </g>
+    </svg>
+  </div>
+
+  <!-- 4 piece breakdown -->
+  <div class="grid md:grid-cols-2 gap-6 mt-10">
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="font-mono text-[10px] uppercase tracking-[0.2em] text-tomato mb-2">SERVICE 1</div>
+      <h3 class="font-display font-bold text-2xl text-leafDeep mb-2">Trainer</h3>
+      <p class="text-inkSoft">Runs once. Reads the dataset, fine-tunes a copy of the base model using LoRA, merges the trained adapter back in, converts the result to GGUF format, and saves it to a shared folder. Then exits. Takes 5–15 minutes on a modern CPU.</p>
+    </div>
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="font-mono text-[10px] uppercase tracking-[0.2em] text-tomato mb-2">SERVICE 2</div>
+      <h3 class="font-display font-bold text-2xl text-leafDeep mb-2">Ollama</h3>
+      <p class="text-inkSoft">The model server. Loads the GGUF file into memory and exposes an HTTP API on port 11434. When asked a question it streams back the model's answer one token at a time. This is the workhorse that keeps running.</p>
+    </div>
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="font-mono text-[10px] uppercase tracking-[0.2em] text-tomato mb-2">SERVICE 3</div>
+      <h3 class="font-display font-bold text-2xl text-leafDeep mb-2">Ollama-init</h3>
+      <p class="text-inkSoft">A tiny helper that runs once Ollama is healthy. It tells Ollama "register this GGUF as a model called grocery-slm", waits for confirmation, then exits. This gives us a clean declarative setup — no manual <code class="text-sm">ollama create</code> required.</p>
+    </div>
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="font-mono text-[10px] uppercase tracking-[0.2em] text-tomato mb-2">SERVICE 4</div>
+      <h3 class="font-display font-bold text-2xl text-leafDeep mb-2">WebUI</h3>
+      <p class="text-inkSoft">A nginx server with two jobs: serve the chat HTML page and proxy any <code class="text-sm">/api/*</code> request through to Ollama. The proxy means the browser only talks to one origin — no CORS configuration, no exposed Ollama port to worry about.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FINE-TUNING ============ -->
+<section id="fine-tuning" class="max-w-6xl mx-auto px-6 py-16 border-t border-line">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 03</div>
+  <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep mb-3">
+    What is "fine-tuning",<br>actually?
+  </h2>
+  <p class="text-lg text-inkSoft max-w-3xl mb-10">
+    Imagine teaching someone a specialty without sending them back to school.
+  </p>
+
+  <div class="grid md:grid-cols-2 gap-10 items-start">
+    <div class="space-y-5 text-lg leading-relaxed">
+      <p>A pre-trained language model is like a person who's read millions of
+        books. They know language, facts, reasoning. But they don't have
+        opinions, expertise, or a specific style — they're a generalist.</p>
+      <p><strong>Fine-tuning</strong> is the process of showing them many
+        examples of how you want them to behave, until they pick up the pattern.
+        Show them 65 examples of "helpful, concise produce advice" and they
+        start producing helpful, concise produce advice.</p>
+      <p>The catch: training all the model's weights from scratch is expensive
+        — billions of numbers, each adjusted slightly with every example.
+        That's why we use <strong>LoRA</strong>.</p>
+      <div class="bg-paper2 border-l-4 border-tomato p-5 rounded-r-lg">
+        <p class="font-display italic text-xl text-leafDeep">
+          "LoRA: train a tiny patch of new weights, leave the rest alone."
+        </p>
+      </div>
+      <p>LoRA stands for <em>Low-Rank Adaptation</em>. Instead of touching the
+        135 million weights of the base model, we add a small set of
+        ~700,000 extra weights — a "patch" — and only train those.
+        The base stays frozen. After training, we mathematically <em>merge</em>
+        the patch into the base so the result is a single regular model file.</p>
+    </div>
+
+    <!-- LoRA SVG -->
+    <div class="bg-white/60 border border-line rounded-2xl p-6">
+      <svg class="diagram" viewBox="0 0 500 460" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L9,3 z" fill="#1f2a1a"/>
+          </marker>
+        </defs>
+
+        <text x="250" y="30" font-size="13" font-family="JetBrains Mono" letter-spacing="2" text-anchor="middle" fill="#1f2a1a">BEFORE TRAINING</text>
+
+        <!-- base model (big block of dots, frozen) -->
+        <g>
+          <rect x="60" y="60" width="200" height="140" rx="6" fill="#efe7d4" stroke="#1f2a1a" stroke-width="1.5"/>
+          <text x="160" y="80" font-size="11" font-family="JetBrains Mono" letter-spacing="1.5" text-anchor="middle" fill="#4a553f">BASE MODEL · 135M weights</text>
+
+          <!-- grid of dots -->
+          <g fill="#1f2a1a" opacity="0.55">
+            <!-- 8 cols x 5 rows of dots -->
+            <g id="weight-grid">
+              <circle cx="80" cy="100" r="2.4"/><circle cx="100" cy="100" r="2.4"/><circle cx="120" cy="100" r="2.4"/><circle cx="140" cy="100" r="2.4"/><circle cx="160" cy="100" r="2.4"/><circle cx="180" cy="100" r="2.4"/><circle cx="200" cy="100" r="2.4"/><circle cx="220" cy="100" r="2.4"/><circle cx="240" cy="100" r="2.4"/>
+              <circle cx="80" cy="120" r="2.4"/><circle cx="100" cy="120" r="2.4"/><circle cx="120" cy="120" r="2.4"/><circle cx="140" cy="120" r="2.4"/><circle cx="160" cy="120" r="2.4"/><circle cx="180" cy="120" r="2.4"/><circle cx="200" cy="120" r="2.4"/><circle cx="220" cy="120" r="2.4"/><circle cx="240" cy="120" r="2.4"/>
+              <circle cx="80" cy="140" r="2.4"/><circle cx="100" cy="140" r="2.4"/><circle cx="120" cy="140" r="2.4"/><circle cx="140" cy="140" r="2.4"/><circle cx="160" cy="140" r="2.4"/><circle cx="180" cy="140" r="2.4"/><circle cx="200" cy="140" r="2.4"/><circle cx="220" cy="140" r="2.4"/><circle cx="240" cy="140" r="2.4"/>
+              <circle cx="80" cy="160" r="2.4"/><circle cx="100" cy="160" r="2.4"/><circle cx="120" cy="160" r="2.4"/><circle cx="140" cy="160" r="2.4"/><circle cx="160" cy="160" r="2.4"/><circle cx="180" cy="160" r="2.4"/><circle cx="200" cy="160" r="2.4"/><circle cx="220" cy="160" r="2.4"/><circle cx="240" cy="160" r="2.4"/>
+              <circle cx="80" cy="180" r="2.4"/><circle cx="100" cy="180" r="2.4"/><circle cx="120" cy="180" r="2.4"/><circle cx="140" cy="180" r="2.4"/><circle cx="160" cy="180" r="2.4"/><circle cx="180" cy="180" r="2.4"/><circle cx="200" cy="180" r="2.4"/><circle cx="220" cy="180" r="2.4"/><circle cx="240" cy="180" r="2.4"/>
+            </g>
+          </g>
+
+          <!-- frozen tag -->
+          <rect x="280" y="70" width="80" height="22" rx="11" fill="#bdd5ff" stroke="#1f2a1a" stroke-width="1"/>
+          <text x="320" y="85" font-size="11" font-family="JetBrains Mono" letter-spacing="1" text-anchor="middle" fill="#1f2a1a">❄ FROZEN</text>
+
+          <!-- LoRA tiny block -->
+          <rect x="60" y="220" width="60" height="60" rx="4" fill="#2f5d3a" stroke="#1f2a1a" stroke-width="1.5"/>
+          <g fill="#f6f1e6">
+            <circle cx="75" cy="240" r="2.4"/><circle cx="90" cy="240" r="2.4"/><circle cx="105" cy="240" r="2.4"/>
+            <circle cx="75" cy="255" r="2.4"/><circle cx="90" cy="255" r="2.4"/><circle cx="105" cy="255" r="2.4"/>
+            <circle cx="75" cy="270" r="2.4"/><circle cx="90" cy="270" r="2.4"/><circle cx="105" cy="270" r="2.4"/>
+          </g>
+          <text x="135" y="245" font-size="13" font-weight="600" fill="#1f2a1a">+ LoRA adapter</text>
+          <text x="135" y="263" font-size="11" font-family="JetBrains Mono" fill="#4a553f">~700K trainable weights</text>
+          <text x="135" y="278" font-size="10" fill="#c8442a" font-style="italic">(0.5% of base!)</text>
+        </g>
+
+        <!-- arrow -->
+        <path d="M 250 320 L 250 360" stroke="#1f2a1a" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+        <text x="265" y="345" font-size="11" font-family="JetBrains Mono" fill="#4a553f">train · merge</text>
+
+        <text x="250" y="385" font-size="13" font-family="JetBrains Mono" letter-spacing="2" text-anchor="middle" fill="#1f2a1a">AFTER TRAINING</text>
+
+        <!-- merged model (same size, slight green tint dots) -->
+        <rect x="120" y="400" width="260" height="50" rx="6" fill="#e8efe1" stroke="#2f5d3a" stroke-width="1.5"/>
+        <g fill="#2f5d3a">
+          <circle cx="140" cy="425" r="2.6"/><circle cx="160" cy="425" r="2.6"/><circle cx="180" cy="425" r="2.6"/><circle cx="200" cy="425" r="2.6"/><circle cx="220" cy="425" r="2.6"/><circle cx="240" cy="425" r="2.6"/><circle cx="260" cy="425" r="2.6"/><circle cx="280" cy="425" r="2.6"/><circle cx="300" cy="425" r="2.6"/><circle cx="320" cy="425" r="2.6"/><circle cx="340" cy="425" r="2.6"/><circle cx="360" cy="425" r="2.6"/>
+        </g>
+        <text x="250" y="416" font-size="11" font-family="JetBrains Mono" letter-spacing="1.5" text-anchor="middle" fill="#1f2a1a">MERGED MODEL · 135M · grocery-flavored</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- The dataset format -->
+  <div class="mt-12">
+    <h3 class="font-display font-bold text-2xl text-leafDeep mb-4">What an example looks like</h3>
+    <p class="text-inkSoft mb-4">Every line in the dataset is one Q&amp;A pair, formatted in the standard "chat completions" shape Hugging Face expects:</p>
+    <pre class="bg-leafDeep text-paper p-5 rounded-lg overflow-x-auto text-sm leading-relaxed"><code>{
+  "messages": [
+    {"role": "user",      "content": "How do I pick a ripe avocado?"},
+    {"role": "assistant", "content": "Gently squeeze the avocado in your palm — not with your fingertips, which bruise the flesh. A ripe Hass yields slightly to pressure but isn't mushy..."}
+  ]
+}</code></pre>
+    <p class="mt-4 text-inkSoft">The training script wraps each example with a <em>system message</em> that defines the persona ("You are GroceryGPT..."), then teaches the model to predict the assistant's reply, given the question. After 3 passes through all 65 examples, it's picked up the pattern.</p>
+  </div>
+</section>
+
+<!-- ============ PIPELINE ============ -->
+<section id="pipeline" class="max-w-6xl mx-auto px-6 py-16 border-t border-line">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 04</div>
+  <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep mb-3">
+    The build pipeline.
+  </h2>
+  <p class="text-lg text-inkSoft max-w-3xl mb-10">
+    From raw Q&amp;A text to a model running in Ollama, four steps.
+  </p>
+
+  <div class="bg-white/60 border border-line rounded-2xl p-6 md:p-10 shadow-sm">
+    <svg class="diagram" viewBox="0 0 980 280" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="parrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L9,3 z" fill="#2f5d3a"/>
+        </marker>
+      </defs>
+
+      <!-- step boxes -->
+      <g font-family="Inter Tight">
+        <!-- 1 dataset -->
+        <rect x="20"  y="80" width="160" height="120" rx="10" fill="#fffaf0" stroke="#1f2a1a" stroke-width="1.5"/>
+        <text x="100" y="105" text-anchor="middle" font-size="11" font-family="JetBrains Mono" letter-spacing="1.5" fill="#c8442a">STEP 1</text>
+        <text x="100" y="130" text-anchor="middle" font-size="32">📚</text>
+        <text x="100" y="160" text-anchor="middle" font-size="14" font-weight="600">dataset.jsonl</text>
+        <text x="100" y="180" text-anchor="middle" font-size="11" fill="#4a553f">65 Q&amp;A examples</text>
+        <text x="100" y="232" text-anchor="middle" font-size="10" font-family="JetBrains Mono" fill="#4a553f">manual</text>
+
+        <path d="M 184 140 L 218 140" stroke="#2f5d3a" stroke-width="2" marker-end="url(#parrow)"/>
+
+        <!-- 2 train -->
+        <rect x="220" y="80" width="180" height="120" rx="10" fill="#fffaf0" stroke="#1f2a1a" stroke-width="1.5"/>
+        <text x="310" y="105" text-anchor="middle" font-size="11" font-family="JetBrains Mono" letter-spacing="1.5" fill="#c8442a">STEP 2</text>
+        <text x="310" y="130" text-anchor="middle" font-size="32">🔧</text>
+        <text x="310" y="160" text-anchor="middle" font-size="14" font-weight="600">LoRA fine-tune</text>
+        <text x="310" y="180" text-anchor="middle" font-size="11" fill="#4a553f">SmolLM2-135M base</text>
+        <text x="310" y="232" text-anchor="middle" font-size="10" font-family="JetBrains Mono" fill="#4a553f">~5–10 min CPU</text>
+
+        <path d="M 404 140 L 438 140" stroke="#2f5d3a" stroke-width="2" marker-end="url(#parrow)"/>
+
+        <!-- 3 merge -->
+        <rect x="440" y="80" width="160" height="120" rx="10" fill="#fffaf0" stroke="#1f2a1a" stroke-width="1.5"/>
+        <text x="520" y="105" text-anchor="middle" font-size="11" font-family="JetBrains Mono" letter-spacing="1.5" fill="#c8442a">STEP 3</text>
+        <text x="520" y="130" text-anchor="middle" font-size="32">🧬</text>
+        <text x="520" y="160" text-anchor="middle" font-size="14" font-weight="600">merge adapter</text>
+        <text x="520" y="180" text-anchor="middle" font-size="11" fill="#4a553f">→ standalone model</text>
+        <text x="520" y="232" text-anchor="middle" font-size="10" font-family="JetBrains Mono" fill="#4a553f">~30 sec</text>
+
+        <path d="M 604 140 L 638 140" stroke="#2f5d3a" stroke-width="2" marker-end="url(#parrow)"/>
+
+        <!-- 4 gguf -->
+        <rect x="640" y="80" width="160" height="120" rx="10" fill="#fffaf0" stroke="#1f2a1a" stroke-width="1.5"/>
+        <text x="720" y="105" text-anchor="middle" font-size="11" font-family="JetBrains Mono" letter-spacing="1.5" fill="#c8442a">STEP 4</text>
+        <text x="720" y="130" text-anchor="middle" font-size="32">📦</text>
+        <text x="720" y="160" text-anchor="middle" font-size="14" font-weight="600">→ GGUF (f16)</text>
+        <text x="720" y="180" text-anchor="middle" font-size="11" fill="#4a553f">llama.cpp converter</text>
+        <text x="720" y="232" text-anchor="middle" font-size="10" font-family="JetBrains Mono" fill="#4a553f">~1 min</text>
+
+        <path d="M 804 140 L 838 140" stroke="#2f5d3a" stroke-width="2" marker-end="url(#parrow)"/>
+
+        <!-- end -->
+        <rect x="840" y="80" width="120" height="120" rx="10" fill="#1c3f24" stroke="#1f2a1a" stroke-width="1.5"/>
+        <text x="900" y="120" text-anchor="middle" font-size="32">🦙</text>
+        <text x="900" y="150" text-anchor="middle" font-size="13" font-weight="600" fill="#f6f1e6">ready for</text>
+        <text x="900" y="168" text-anchor="middle" font-size="13" font-weight="600" fill="#f6f1e6">Ollama</text>
+        <text x="900" y="232" text-anchor="middle" font-size="10" font-family="JetBrains Mono" fill="#4a553f">→ § 05</text>
+      </g>
+
+      <!-- timeline scale at top -->
+      <line x1="20" y1="50" x2="960" y2="50" stroke="#1f2a1a" stroke-width="0.5" stroke-dasharray="2,3"/>
+      <text x="20" y="40" font-size="10" font-family="JetBrains Mono" fill="#4a553f">t = 0</text>
+      <text x="960" y="40" font-size="10" font-family="JetBrains Mono" fill="#4a553f" text-anchor="end">t ≈ 12 min</text>
+    </svg>
+  </div>
+
+  <p class="mt-6 text-inkSoft max-w-3xl">
+    Each step writes its output to a shared <code class="text-sm">./output/</code>
+    folder so the next step can read it. The whole thing is wrapped in a single
+    shell script that runs inside the trainer container — you don't run these
+    commands manually.
+  </p>
+</section>
+
+<!-- ============ A REQUEST'S JOURNEY ============ -->
+<section class="max-w-6xl mx-auto px-6 py-16 border-t border-line">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 05</div>
+  <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep mb-3">
+    Anatomy of a chat reply.
+  </h2>
+  <p class="text-lg text-inkSoft max-w-3xl mb-10">
+    What happens between you typing "How do I pick a ripe mango?" and tokens streaming back.
+  </p>
+
+  <div class="bg-white/60 border border-line rounded-2xl p-6 md:p-10">
+    <svg class="diagram" viewBox="0 0 920 360" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="rarr" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L9,3 z" fill="#1f2a1a"/>
+        </marker>
+        <marker id="rarr-leaf" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L9,3 z" fill="#2f5d3a"/>
+        </marker>
+      </defs>
+
+      <!-- columns -->
+      <g font-size="13" font-family="JetBrains Mono" letter-spacing="1.5">
+        <text x="100" y="40" text-anchor="middle" fill="#1f2a1a">browser</text>
+        <text x="350" y="40" text-anchor="middle" fill="#1f2a1a">nginx</text>
+        <text x="600" y="40" text-anchor="middle" fill="#1f2a1a">ollama</text>
+        <text x="830" y="40" text-anchor="middle" fill="#1f2a1a">model</text>
+      </g>
+
+      <!-- vertical lifelines -->
+      <line x1="100" y1="50" x2="100" y2="340" stroke="#1f2a1a" stroke-width="0.5" stroke-dasharray="2,4"/>
+      <line x1="350" y1="50" x2="350" y2="340" stroke="#1f2a1a" stroke-width="0.5" stroke-dasharray="2,4"/>
+      <line x1="600" y1="50" x2="600" y2="340" stroke="#1f2a1a" stroke-width="0.5" stroke-dasharray="2,4"/>
+      <line x1="830" y1="50" x2="830" y2="340" stroke="#1f2a1a" stroke-width="0.5" stroke-dasharray="2,4"/>
+
+      <!-- step 1 -->
+      <path d="M 105 90 L 345 90" stroke="#1f2a1a" stroke-width="2" marker-end="url(#rarr)"/>
+      <text x="225" y="80" text-anchor="middle" font-size="12" fill="#1f2a1a">POST /api/chat</text>
+      <text x="225" y="106" text-anchor="middle" font-size="10" font-family="JetBrains Mono" fill="#4a553f">{"model":"grocery-slm","messages":[…]}</text>
+
+      <!-- step 2 -->
+      <path d="M 355 140 L 595 140" stroke="#1f2a1a" stroke-width="2" marker-end="url(#rarr)"/>
+      <text x="475" y="130" text-anchor="middle" font-size="12" fill="#1f2a1a">proxied 1:1, no buffering</text>
+
+      <!-- step 3 -->
+      <path d="M 605 180 L 825 180" stroke="#1f2a1a" stroke-width="2" marker-end="url(#rarr)"/>
+      <text x="715" y="170" text-anchor="middle" font-size="12" fill="#1f2a1a">render template + run</text>
+
+      <!-- step 4 -->
+      <path d="M 825 230 L 605 230" stroke="#2f5d3a" stroke-width="2" marker-end="url(#rarr-leaf)"/>
+      <text x="715" y="220" text-anchor="middle" font-size="12" fill="#2f5d3a">tokens stream out</text>
+
+      <!-- step 5 -->
+      <path d="M 595 270 L 355 270" stroke="#2f5d3a" stroke-width="2" marker-end="url(#rarr-leaf)"/>
+      <text x="475" y="260" text-anchor="middle" font-size="12" fill="#2f5d3a">NDJSON chunks</text>
+
+      <!-- step 6 -->
+      <path d="M 345 310 L 105 310" stroke="#2f5d3a" stroke-width="2" marker-end="url(#rarr-leaf)"/>
+      <text x="225" y="300" text-anchor="middle" font-size="12" fill="#2f5d3a">fetch().getReader() · paint each chunk</text>
+    </svg>
+
+    <div class="grid md:grid-cols-2 gap-6 mt-8 text-inkSoft">
+      <div>
+        <p class="font-semibold text-ink mb-1">Why streaming?</p>
+        <p>The model produces one token at a time. If we waited for the
+          full reply we'd see nothing for several seconds, then a wall of
+          text. By streaming, the user sees the answer appear as it's
+          generated — much better feel.</p>
+      </div>
+      <div>
+        <p class="font-semibold text-ink mb-1">Why nginx in the middle?</p>
+        <p>Without it the browser would have to call Ollama on a different
+          port, hitting CORS issues. With nginx, the page and the API live
+          at the same origin (<code class="text-sm">localhost:8080</code>).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RUNNING ============ -->
+<section id="running" class="max-w-6xl mx-auto px-6 py-16 border-t border-line">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 06</div>
+  <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep mb-3">
+    Running it yourself.
+  </h2>
+  <p class="text-lg text-inkSoft max-w-3xl mb-10">
+    Three commands. The first is slow (training); the rest are seconds.
+  </p>
+
+  <div class="space-y-6">
+
+    <!-- step 1 -->
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="flex items-baseline gap-3 mb-2">
+        <div class="font-mono text-[10px] uppercase tracking-[0.2em] text-tomato">STEP 1</div>
+        <div class="text-sm text-inkSoft">~5–15 min · downloads SmolLM2 once</div>
+      </div>
+      <h3 class="font-display font-bold text-2xl text-leafDeep mb-3">Build the model</h3>
+      <div class="relative">
+        <pre class="bg-leafDeep text-paper p-5 rounded-lg overflow-x-auto text-sm" id="cmd-1"><code>docker compose --profile train run --rm trainer</code></pre>
+        <button class="copy-btn absolute top-3 right-3 text-xs font-mono px-2 py-1 rounded bg-paper text-leafDeep border border-line" data-target="cmd-1">copy</button>
+      </div>
+      <p class="text-inkSoft mt-3">Trains the LoRA adapter, merges it, exports to GGUF. The output lands in <code class="text-sm">./output/</code>.</p>
+    </div>
+
+    <!-- step 2 -->
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="flex items-baseline gap-3 mb-2">
+        <div class="font-mono text-[10px] uppercase tracking-[0.2em] text-tomato">STEP 2</div>
+        <div class="text-sm text-inkSoft">~10–30 sec to be ready</div>
+      </div>
+      <h3 class="font-display font-bold text-2xl text-leafDeep mb-3">Start the demo</h3>
+      <div class="relative">
+        <pre class="bg-leafDeep text-paper p-5 rounded-lg overflow-x-auto text-sm" id="cmd-2"><code>docker compose up -d</code></pre>
+        <button class="copy-btn absolute top-3 right-3 text-xs font-mono px-2 py-1 rounded bg-paper text-leafDeep border border-line" data-target="cmd-2">copy</button>
+      </div>
+      <p class="text-inkSoft mt-3">Brings up Ollama + the chat UI. Watch <code class="text-sm">docker compose logs -f ollama-init</code> to see the model register.</p>
+    </div>
+
+    <!-- step 3 -->
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="flex items-baseline gap-3 mb-2">
+        <div class="font-mono text-[10px] uppercase tracking-[0.2em] text-tomato">STEP 3</div>
+        <div class="text-sm text-inkSoft">~30 sec sanity check</div>
+      </div>
+      <h3 class="font-display font-bold text-2xl text-leafDeep mb-3">Verify it works</h3>
+      <div class="relative">
+        <pre class="bg-leafDeep text-paper p-5 rounded-lg overflow-x-auto text-sm" id="cmd-3"><code>./scripts/smoke.sh
+# then open http://localhost:8080</code></pre>
+        <button class="copy-btn absolute top-3 right-3 text-xs font-mono px-2 py-1 rounded bg-paper text-leafDeep border border-line" data-target="cmd-3">copy</button>
+      </div>
+      <p class="text-inkSoft mt-3">Hits the API directly, asks one question, prints the result. If this passes, you're good.</p>
+    </div>
+
+  </div>
+
+  <!-- automated tests -->
+  <div class="mt-12 bg-paper2 border border-line rounded-xl p-6 md:p-8">
+    <div class="font-mono text-[10px] uppercase tracking-[0.2em] text-tomato mb-2">BONUS</div>
+    <h3 class="font-display font-bold text-2xl text-leafDeep mb-3">Run the automated test suite</h3>
+    <p class="text-inkSoft mb-4">For a more thorough check, the <code class="text-sm">tests/</code> folder has a pytest suite that hits Ollama and verifies behavior:</p>
+    <div class="relative">
+      <pre class="bg-leafDeep text-paper p-5 rounded-lg overflow-x-auto text-sm" id="cmd-tests"><code>pip install -r tests/requirements.txt
+pytest tests/ -v</code></pre>
+      <button class="copy-btn absolute top-3 right-3 text-xs font-mono px-2 py-1 rounded bg-paper text-leafDeep border border-line" data-target="cmd-tests">copy</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ MANUAL TESTS ============ -->
+<section id="manual-tests" class="max-w-6xl mx-auto px-6 py-16 border-t border-line">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 07</div>
+  <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep mb-3">
+    Manual test playbook.
+  </h2>
+  <p class="text-lg text-inkSoft max-w-3xl mb-10">
+    A model is only as good as the questions you throw at it. Here's a structured walkthrough that takes about 10 minutes and exercises every important behavior.
+  </p>
+
+  <div class="space-y-8">
+
+    <!-- pre-flight -->
+    <div class="bg-white/60 border border-line rounded-xl p-6 md:p-8">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-citrus flex items-center justify-center font-display font-black text-leafDeep">0</div>
+        <h3 class="font-display font-bold text-2xl text-leafDeep">Pre-flight check</h3>
+      </div>
+      <p class="text-inkSoft mb-3">Make sure all four services are happy before you start poking the UI.</p>
+      <div class="relative">
+        <pre class="bg-leafDeep text-paper p-4 rounded-lg overflow-x-auto text-sm" id="cmd-preflight"><code>docker compose ps</code></pre>
+        <button class="copy-btn absolute top-3 right-3 text-xs font-mono px-2 py-1 rounded bg-paper text-leafDeep border border-line" data-target="cmd-preflight">copy</button>
+      </div>
+      <p class="mt-3 text-inkSoft text-sm">You should see <code>ollama</code> as <code>running (healthy)</code>, <code>ollama-init</code> as <code>exited (0)</code>, and <code>webui</code> as <code>running</code>. The trainer is fine being absent — it's already done its job.</p>
+    </div>
+
+    <!-- 1 visual -->
+    <div class="bg-white/60 border border-line rounded-xl p-6 md:p-8">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-leaf text-paper flex items-center justify-center font-display font-black">1</div>
+        <h3 class="font-display font-bold text-2xl text-leafDeep">Visual check</h3>
+      </div>
+      <p class="text-inkSoft mb-3">Open <a href="http://localhost:8080" class="anchor">http://localhost:8080</a>. You're looking for:</p>
+      <ul class="space-y-2 text-inkSoft list-none ml-0">
+        <li class="flex gap-3"><span class="text-leaf">✓</span> Page loads in under a second.</li>
+        <li class="flex gap-3"><span class="text-leaf">✓</span> Status indicator (top right) settles to a green dot with "model ready" within ~5 seconds.</li>
+        <li class="flex gap-3"><span class="text-leaf">✓</span> Four suggestion chips appear ("ripe avocado?", "fridge tomatoes?", etc.).</li>
+        <li class="flex gap-3"><span class="text-leaf">✓</span> Cursor is in the textarea on load.</li>
+      </ul>
+      <p class="mt-3 text-tomato text-sm">⚠ If the dot is red ("ollama unreachable"), the proxy isn't reaching ollama — check <code>docker compose logs ollama</code>.</p>
+    </div>
+
+    <!-- 2 streaming -->
+    <div class="bg-white/60 border border-line rounded-xl p-6 md:p-8">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-leaf text-paper flex items-center justify-center font-display font-black">2</div>
+        <h3 class="font-display font-bold text-2xl text-leafDeep">Streaming sanity</h3>
+      </div>
+      <p class="text-inkSoft mb-3">Click the "ripe avocado?" chip. Watch the assistant bubble:</p>
+      <ul class="space-y-2 text-inkSoft">
+        <li class="flex gap-3"><span class="text-leaf">✓</span> A "typing" dot animation appears immediately.</li>
+        <li class="flex gap-3"><span class="text-leaf">✓</span> Within ~2 seconds the dots are replaced by streaming text — words appearing in chunks, not all at once.</li>
+        <li class="flex gap-3"><span class="text-leaf">✓</span> The page auto-scrolls as the answer grows.</li>
+        <li class="flex gap-3"><span class="text-leaf">✓</span> Reply finishes in ~5–20 seconds depending on CPU.</li>
+      </ul>
+      <p class="mt-3 text-tomato text-sm">⚠ If the whole reply appears at once after a long pause, the nginx proxy is buffering — verify <code>proxy_buffering off</code> is in <code>nginx.conf</code>.</p>
+    </div>
+
+    <!-- 3 multi-turn -->
+    <div class="bg-white/60 border border-line rounded-xl p-6 md:p-8">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-leaf text-paper flex items-center justify-center font-display font-black">3</div>
+        <h3 class="font-display font-bold text-2xl text-leafDeep">Multi-turn memory</h3>
+      </div>
+      <p class="text-inkSoft mb-3">Conversational context lives client-side. Test it with this exchange:</p>
+      <ol class="space-y-2 text-inkSoft list-decimal ml-6">
+        <li>Ask: <em>"How do I pick a ripe avocado?"</em> → expect tips about squeezing, color, stem nub.</li>
+        <li>Follow up: <em>"And how do I store it once I cut it?"</em> → expect storage advice (wrap, lemon juice, fridge).</li>
+        <li>The follow-up should reference avocados without you naming them again.</li>
+      </ol>
+      <p class="mt-3 text-tomato text-sm">⚠ If the second answer is generic or asks "store what?", check that <code>history</code> in <code>index.html</code> is being appended on each turn.</p>
+    </div>
+
+    <!-- 4 persona -->
+    <div class="bg-white/60 border border-line rounded-xl p-6 md:p-8">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-leaf text-paper flex items-center justify-center font-display font-black">4</div>
+        <h3 class="font-display font-bold text-2xl text-leafDeep">Persona check</h3>
+      </div>
+      <p class="text-inkSoft mb-3">The system prompt instructs the model to redirect off-topic questions. Try these:</p>
+      <ul class="space-y-2 text-inkSoft">
+        <li><strong>"Write me a Python function to reverse a string"</strong> → should politely redirect, <em>not</em> output code.</li>
+        <li><strong>"What's the capital of France?"</strong> → should redirect, not say "Paris".</li>
+        <li><strong>"Tell me a joke about cars"</strong> → should pivot back to produce.</li>
+      </ul>
+      <p class="mt-3 text-inkSoft text-sm italic">A 135M model isn't perfect at this — occasional leaks happen. What you want is <em>most</em> of the time it stays in character. If it always fails, the system prompt isn't being applied (check the Modelfile).</p>
+    </div>
+
+    <!-- 5 generalisation -->
+    <div class="bg-white/60 border border-line rounded-xl p-6 md:p-8">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-leaf text-paper flex items-center justify-center font-display font-black">5</div>
+        <h3 class="font-display font-bold text-2xl text-leafDeep">Generalization check</h3>
+      </div>
+      <p class="text-inkSoft mb-3">Ask about produce that <em>wasn't</em> in the training set. The model should still respond reasonably, drawing on its base knowledge in the trained style:</p>
+      <ul class="space-y-2 text-inkSoft">
+        <li><strong>"How can I tell if a pear is ripe?"</strong> → expect tips about pressing near the neck/stem.</li>
+        <li><strong>"How do I know if a pomegranate is ready?"</strong> → expect heaviness, firm leathery skin.</li>
+        <li><strong>"What's the easiest way to peel garlic?"</strong> → expect smash-with-knife or shake-in-jar.</li>
+      </ul>
+      <p class="mt-3 text-inkSoft text-sm italic">Answers won't be as polished as for trained items. That's expected — generalization is the limit of small models with small datasets.</p>
+    </div>
+
+    <!-- 6 perf -->
+    <div class="bg-white/60 border border-line rounded-xl p-6 md:p-8">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-10 h-10 rounded-full bg-leaf text-paper flex items-center justify-center font-display font-black">6</div>
+        <h3 class="font-display font-bold text-2xl text-leafDeep">Performance feel</h3>
+      </div>
+      <p class="text-inkSoft mb-3">On a typical modern laptop CPU you should see:</p>
+      <table class="w-full text-sm border-collapse mt-2">
+        <thead>
+          <tr class="border-b border-line text-inkSoft uppercase tracking-wider text-xs">
+            <th class="text-left py-2 font-mono">Metric</th>
+            <th class="text-left py-2 font-mono">Healthy range</th>
+            <th class="text-left py-2 font-mono">Concerning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-line/40">
+            <td class="py-2.5">Time to first token</td>
+            <td class="py-2.5 text-leaf">&lt; 3 sec</td>
+            <td class="py-2.5 text-tomato">&gt; 10 sec</td>
+          </tr>
+          <tr class="border-b border-line/40">
+            <td class="py-2.5">Tokens per second</td>
+            <td class="py-2.5 text-leaf">15 – 40 tok/s</td>
+            <td class="py-2.5 text-tomato">&lt; 5 tok/s</td>
+          </tr>
+          <tr class="border-b border-line/40">
+            <td class="py-2.5">Full reply length</td>
+            <td class="py-2.5 text-leaf">5 – 20 sec</td>
+            <td class="py-2.5 text-tomato">&gt; 60 sec</td>
+          </tr>
+          <tr>
+            <td class="py-2.5">Memory used by Ollama</td>
+            <td class="py-2.5 text-leaf">~500 MB – 1 GB</td>
+            <td class="py-2.5 text-tomato">&gt; 4 GB (something's wrong)</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="mt-3 text-inkSoft text-sm">Check <code>docker stats grocery-ollama</code> to watch memory and CPU live.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============ TEST DATA ============ -->
+<section id="test-data" class="max-w-6xl mx-auto px-6 py-16 border-t border-line">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 08</div>
+  <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep mb-3">
+    Test prompt library.
+  </h2>
+  <p class="text-lg text-inkSoft max-w-3xl mb-10">
+    Curated prompts grouped by what they probe. Click any card to copy. Each card lists what a "good" answer should mention.
+  </p>
+
+  <!-- Category filter -->
+  <div class="flex flex-wrap gap-2 mb-8" id="cat-filter">
+    <button data-cat="all"          class="filter-btn active px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider bg-leafDeep text-paper">all</button>
+    <button data-cat="ripeness"     class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">ripeness</button>
+    <button data-cat="storage"      class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">storage</button>
+    <button data-cat="substitution" class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">substitution</button>
+    <button data-cat="prep"         class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">prep</button>
+    <button data-cat="nutrition"    class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">nutrition</button>
+    <button data-cat="identification" class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">identification</button>
+    <button data-cat="seasonality"  class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">seasonality</button>
+    <button data-cat="greeting"     class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">greeting</button>
+    <button data-cat="persona"      class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">persona</button>
+    <button data-cat="edge"         class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">edge cases</button>
+    <button data-cat="safety"       class="filter-btn px-3 py-1.5 rounded-full border border-line text-sm font-mono uppercase tracking-wider hover:bg-ink hover:text-paper">safety</button>
+  </div>
+
+  <!-- Cards (rendered by JS from embedded data) -->
+  <div id="prompt-cards" class="grid md:grid-cols-2 gap-5"></div>
+
+  <!-- Quality rubric -->
+  <div class="mt-12 bg-paper2 border border-line rounded-xl p-6 md:p-8">
+    <h3 class="font-display font-bold text-2xl text-leafDeep mb-4">How to score answers</h3>
+    <p class="text-inkSoft mb-6">When you ask a test prompt, rate the answer on these axes:</p>
+    <div class="grid md:grid-cols-3 gap-4 text-sm">
+      <div class="bg-white/60 border border-line rounded-lg p-4">
+        <div class="font-mono text-[10px] uppercase tracking-wider text-tomato mb-1">A · TOPICAL</div>
+        <p class="font-semibold mb-1">Did it mention any expected term?</p>
+        <p class="text-inkSoft">If <em>"How do I store mushrooms?"</em> doesn't mention paper bags or moisture, the model has missed the point.</p>
+      </div>
+      <div class="bg-white/60 border border-line rounded-lg p-4">
+        <div class="font-mono text-[10px] uppercase tracking-wider text-tomato mb-1">B · CORRECT</div>
+        <p class="font-semibold mb-1">Is what it said true?</p>
+        <p class="text-inkSoft">A small model can confidently make things up. Sanity-check claims that sound suspiciously specific (numbers, dates, names).</p>
+      </div>
+      <div class="bg-white/60 border border-line rounded-lg p-4">
+        <div class="font-mono text-[10px] uppercase tracking-wider text-tomato mb-1">C · IN-PERSONA</div>
+        <p class="font-semibold mb-1">Did it stay GroceryGPT?</p>
+        <p class="text-inkSoft">Concise, warm, practical. Not a generic essay. Not breaking into code or unrelated topics.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAILURE MODES ============ -->
+<section class="max-w-6xl mx-auto px-6 py-16 border-t border-line">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 09</div>
+  <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep mb-3">
+    What can go wrong.
+  </h2>
+  <p class="text-lg text-inkSoft max-w-3xl mb-10">
+    Honest about limitations — knowing the failure modes is half the battle.
+  </p>
+
+  <div class="grid md:grid-cols-2 gap-6">
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="text-tomato font-mono text-[10px] uppercase tracking-[0.2em] mb-2">FAILURE 1</div>
+      <h3 class="font-display font-bold text-xl text-leafDeep mb-2">Hallucinated facts</h3>
+      <p class="text-inkSoft">A 135M model has limited knowledge and will confidently invent numbers, dates, or scientific names. It might tell you watermelons need 47% humidity. They don't, and the model doesn't really know — it's pattern-matching.</p>
+      <p class="mt-3 text-sm text-inkSoft"><strong>Mitigation:</strong> treat specific numeric claims with skepticism. The trained Q&amp;A material is reliable; ad-hoc generations less so.</p>
+    </div>
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="text-tomato font-mono text-[10px] uppercase tracking-[0.2em] mb-2">FAILURE 2</div>
+      <h3 class="font-display font-bold text-xl text-leafDeep mb-2">Persona leakage</h3>
+      <p class="text-inkSoft">Sometimes the model will answer an off-topic question instead of redirecting. Small models have a weaker grip on system prompts than large ones.</p>
+      <p class="mt-3 text-sm text-inkSoft"><strong>Mitigation:</strong> add more "redirect" examples to the dataset, lower temperature in the Modelfile (currently 0.6), or move up to SmolLM2-360M.</p>
+    </div>
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="text-tomato font-mono text-[10px] uppercase tracking-[0.2em] mb-2">FAILURE 3</div>
+      <h3 class="font-display font-bold text-xl text-leafDeep mb-2">Repetitive output</h3>
+      <p class="text-inkSoft">If you see the model start looping ("...store in a cool place. Store in a cool place. Store in a cool..."), temperature is too low or there's a sampling issue.</p>
+      <p class="mt-3 text-sm text-inkSoft"><strong>Mitigation:</strong> bump temperature to 0.7–0.8, or add <code>repeat_penalty 1.1</code> to the Modelfile parameters.</p>
+    </div>
+    <div class="bg-white/60 border border-line rounded-xl p-6">
+      <div class="text-tomato font-mono text-[10px] uppercase tracking-[0.2em] mb-2">FAILURE 4</div>
+      <h3 class="font-display font-bold text-xl text-leafDeep mb-2">Generic, training-data answers</h3>
+      <p class="text-inkSoft">The model says "you should consult a nutritionist" instead of actual advice — it's reverting to base-model defaults instead of the trained persona.</p>
+      <p class="mt-3 text-sm text-inkSoft"><strong>Mitigation:</strong> train more epochs (try <code>EPOCHS=5</code>), expand the dataset, or check that the LoRA actually merged successfully (look at the file size diff in <code>./output/merged/</code>).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GLOSSARY ============ -->
+<section class="max-w-6xl mx-auto px-6 py-16 border-t border-line">
+  <div class="font-mono text-xs uppercase tracking-[0.2em] text-tomato mb-3">§ 10</div>
+  <h2 class="font-display font-bold text-4xl md:text-5xl leading-tight text-leafDeep mb-3">
+    Glossary.
+  </h2>
+  <p class="text-lg text-inkSoft max-w-3xl mb-10">
+    Every term you might bump into, in plain English.
+  </p>
+
+  <dl class="space-y-6">
+    <div class="grid md:grid-cols-12 gap-4 pb-5 border-b border-line/40">
+      <dt class="md:col-span-3 font-display font-bold text-xl text-leafDeep">SLM</dt>
+      <dd class="md:col-span-9 text-inkSoft">Small Language Model. Same shape as ChatGPT under the hood, just much smaller — millions of parameters instead of billions. Trades accuracy for speed and the ability to run on a laptop.</dd>
+    </div>
+    <div class="grid md:grid-cols-12 gap-4 pb-5 border-b border-line/40">
+      <dt class="md:col-span-3 font-display font-bold text-xl text-leafDeep">Token</dt>
+      <dd class="md:col-span-9 text-inkSoft">The unit a language model reads and writes — usually a word fragment of 2–6 letters. "watermelon" might be one token; "pomegranate" two or three. Models predict one token at a time, then feed it back in to predict the next.</dd>
+    </div>
+    <div class="grid md:grid-cols-12 gap-4 pb-5 border-b border-line/40">
+      <dt class="md:col-span-3 font-display font-bold text-xl text-leafDeep">LoRA</dt>
+      <dd class="md:col-span-9 text-inkSoft">Low-Rank Adaptation. A way to fine-tune a model by adding a small "patch" of new weights instead of changing the original. Cheap, fast, and the patch can be merged in or kept separate.</dd>
+    </div>
+    <div class="grid md:grid-cols-12 gap-4 pb-5 border-b border-line/40">
+      <dt class="md:col-span-3 font-display font-bold text-xl text-leafDeep">GGUF</dt>
+      <dd class="md:col-span-9 text-inkSoft">A file format for storing models efficiently. It's what llama.cpp and Ollama use. Supports various levels of "quantization" (lossy compression of the weights) for smaller files.</dd>
+    </div>
+    <div class="grid md:grid-cols-12 gap-4 pb-5 border-b border-line/40">
+      <dt class="md:col-span-3 font-display font-bold text-xl text-leafDeep">Modelfile</dt>
+      <dd class="md:col-span-9 text-inkSoft">Ollama's recipe format. Says which GGUF to load, what chat template to use, what the system prompt is, and which parameters to set. Like a Dockerfile, but for models.</dd>
+    </div>
+    <div class="grid md:grid-cols-12 gap-4 pb-5 border-b border-line/40">
+      <dt class="md:col-span-3 font-display font-bold text-xl text-leafDeep">Chat template</dt>
+      <dd class="md:col-span-9 text-inkSoft">The exact way messages are formatted into a string before the model sees them. Different model families use different templates (special tokens like <code class="text-sm">&lt;|im_start|&gt;</code>). Get this wrong and the model produces gibberish.</dd>
+    </div>
+    <div class="grid md:grid-cols-12 gap-4 pb-5 border-b border-line/40">
+      <dt class="md:col-span-3 font-display font-bold text-xl text-leafDeep">System prompt</dt>
+      <dd class="md:col-span-9 text-inkSoft">A hidden message at the start of every conversation that defines the assistant's persona ("You are GroceryGPT..."). The user never sees it.</dd>
+    </div>
+    <div class="grid md:grid-cols-12 gap-4 pb-5 border-b border-line/40">
+      <dt class="md:col-span-3 font-display font-bold text-xl text-leafDeep">Temperature</dt>
+      <dd class="md:col-span-9 text-inkSoft">A knob from 0 to ~2 that controls randomness. 0 = always pick the most likely next token (boring, repetitive). 1 = sample naturally. Higher = more creative, riskier. We use 0.6.</dd>
+    </div>
+    <div class="grid md:grid-cols-12 gap-4">
+      <dt class="md:col-span-3 font-display font-bold text-xl text-leafDeep">NDJSON streaming</dt>
+      <dd class="md:col-span-9 text-inkSoft">Newline-Delimited JSON. Instead of one big response, the server sends one JSON object per line as it produces each token. The browser reads them as they arrive, not all at once.</dd>
+    </div>
+  </dl>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="border-t border-line bg-paper2/50">
+  <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col sm:flex-row justify-between items-start gap-4">
+    <div>
+      <div class="font-display font-black text-2xl text-leafDeep">Grocery<em class="text-tomato not-italic">GPT</em></div>
+      <div class="text-inkSoft text-sm mt-1">A small language model · trained on produce</div>
+    </div>
+    <div class="text-sm text-inkSoft text-right">
+      <div><a href="/" class="anchor">↳ open the chat</a></div>
+      <div class="mt-1 font-mono text-xs">localhost:8080</div>
+    </div>
+  </div>
+</footer>
+
+</div><!-- /wrap -->
+
+
+<!-- ============ EMBEDDED TEST PROMPTS + JS ============ -->
+<script id="prompt-data" type="application/json">
+[
+  {"id":"ripeness-01","category":"ripeness","prompt":"How can I tell if a pear is ripe?","expects":"press near the neck/stem; gentle yield"},
+  {"id":"ripeness-02","category":"ripeness","prompt":"How do I know if a pomegranate is ready to eat?","expects":"heavy for size, firm leathery skin, deep red"},
+  {"id":"ripeness-03","category":"ripeness","prompt":"What should a ripe kiwi feel like?","expects":"slight give to gentle pressure"},
+  {"id":"ripeness-04","category":"ripeness","prompt":"How do I pick a sweet pineapple?","expects":"sweet smell at the base, golden color"},
+  {"id":"ripeness-05","category":"ripeness","prompt":"How can I tell if a cantaloupe is ripe?","expects":"sweet smell at stem end, slight give"},
+  {"id":"storage-01","category":"storage","prompt":"What's the best way to keep avocados fresh?","expects":"counter while ripening, fridge once ripe"},
+  {"id":"storage-02","category":"storage","prompt":"How long does cabbage last in the fridge?","expects":"weeks; wrap in plastic in crisper"},
+  {"id":"storage-03","category":"storage","prompt":"Can I freeze grapes?","expects":"yes; wash, dry, single layer; great as snack"},
+  {"id":"storage-04","category":"storage","prompt":"How do I store fresh herbs?","expects":"jar of water + bag for soft herbs; damp towel for hard"},
+  {"id":"storage-05","category":"storage","prompt":"Should I refrigerate tomatoes?","expects":"only when fully ripe; cold ruins texture"},
+  {"id":"substitution-01","category":"substitution","prompt":"What can I use instead of fresh basil?","expects":"dried basil, parsley, mint, or oregano with caveats"},
+  {"id":"substitution-02","category":"substitution","prompt":"I'm out of lemons. What's a good replacement?","expects":"lime is closest; vinegar works in a pinch"},
+  {"id":"substitution-03","category":"substitution","prompt":"What's a good substitute for cilantro if I hate it?","expects":"flat-leaf parsley + lime; the OR6A2 gene thing"},
+  {"id":"prep-01","category":"prep","prompt":"How do I cut an onion without crying?","expects":"chill it first; sharp knife; ventilation"},
+  {"id":"prep-02","category":"prep","prompt":"What's the easiest way to peel garlic?","expects":"smash with knife or shake in jar"},
+  {"id":"prep-03","category":"prep","prompt":"How do I de-seed a pomegranate without making a mess?","expects":"underwater bowl method, or whack with spoon"},
+  {"id":"prep-04","category":"prep","prompt":"How do I cut a mango cleanly?","expects":"slice cheeks off pit; crosshatch and invert"},
+  {"id":"nutrition-01","category":"nutrition","prompt":"Are bananas actually healthy?","expects":"potassium, fiber, vitamins; reasonable calories"},
+  {"id":"nutrition-02","category":"nutrition","prompt":"What vegetable has the most vitamin C?","expects":"red bell peppers; broccoli, kale also high"},
+  {"id":"nutrition-03","category":"nutrition","prompt":"Are blueberries good for you?","expects":"antioxidants (anthocyanins), vitamin C, fiber"},
+  {"id":"identification-01","category":"identification","prompt":"What's a rutabaga?","expects":"root vegetable, turnip × cabbage cross"},
+  {"id":"identification-02","category":"identification","prompt":"What is a persimmon?","expects":"orange fall fruit; Fuyu eaten firm, Hachiya soft"},
+  {"id":"identification-03","category":"identification","prompt":"What is jicama and how do I prepare it?","expects":"Mexican root, peel and slice; raw with chili-lime"},
+  {"id":"identification-04","category":"identification","prompt":"What's the difference between yams and sweet potatoes?","expects":"US 'yams' are usually sweet potatoes; true yams rare in US stores"},
+  {"id":"seasonality-01","category":"seasonality","prompt":"What fruit is in season in winter?","expects":"citrus (oranges, grapefruit, mandarins), pomegranate"},
+  {"id":"seasonality-02","category":"seasonality","prompt":"When is corn at its best?","expects":"summer; eat within 1-2 days of harvest"},
+  {"id":"greeting-01","category":"greeting","prompt":"Hi","expects":"friendly greeting + orient to produce help"},
+  {"id":"greeting-02","category":"greeting","prompt":"What can you help me with?","expects":"capabilities list focused on fruit/veg"},
+  {"id":"persona-01","category":"persona","prompt":"Write me a Python function to reverse a string.","expects":"REDIRECT to produce; should NOT output code"},
+  {"id":"persona-02","category":"persona","prompt":"What's the capital of France?","expects":"REDIRECT; should NOT answer Paris"},
+  {"id":"persona-03","category":"persona","prompt":"Tell me a joke about cars.","expects":"REDIRECT; stay on produce theme"},
+  {"id":"edge-01","category":"edge","prompt":"apple","expects":"clarifying question OR general apple info"},
+  {"id":"edge-02","category":"edge","prompt":"fridge?","expects":"clarifying question OR general fridge tips"},
+  {"id":"edge-03","category":"edge","prompt":"help","expects":"explain capabilities, suggest examples"},
+  {"id":"safety-01","category":"safety","prompt":"What parts of a tomato plant are poisonous?","expects":"leaves and stems contain solanine"},
+  {"id":"safety-02","category":"safety","prompt":"Can I eat the skin of a kiwi?","expects":"yes if washed; it's edible and has fiber"},
+  {"id":"safety-03","category":"safety","prompt":"Why do my potatoes turn green and is it dangerous?","expects":"solanine from light exposure; cut away or discard"}
+]
+</script>
+
+<script>
+// ---- prompt cards renderer ----
+const data = JSON.parse(document.getElementById('prompt-data').textContent);
+const grid = document.getElementById('prompt-cards');
+
+const catColor = {
+  ripeness:       'bg-tomato/10 border-tomato/40 text-tomato',
+  storage:        'bg-leaf/10 border-leaf/40 text-leaf',
+  substitution:   'bg-citrus/20 border-citrus/50 text-leafDeep',
+  prep:           'bg-leafDeep/10 border-leafDeep/40 text-leafDeep',
+  nutrition:      'bg-tomato/10 border-tomato/40 text-tomato',
+  identification: 'bg-leaf/10 border-leaf/40 text-leaf',
+  seasonality:    'bg-citrus/20 border-citrus/50 text-leafDeep',
+  greeting:       'bg-leaf/10 border-leaf/40 text-leaf',
+  persona:        'bg-tomato/15 border-tomato/50 text-tomato',
+  edge:           'bg-paper2 border-line text-inkSoft',
+  safety:         'bg-tomato/15 border-tomato/50 text-tomato',
+};
+
+function renderCards(filterCat) {
+  grid.innerHTML = '';
+  const items = filterCat === 'all' ? data : data.filter(d => d.category === filterCat);
+  items.forEach((d, idx) => {
+    const card = document.createElement('div');
+    card.className = 'group bg-white/60 border border-line rounded-xl p-5 hover:shadow-md transition cursor-pointer relative';
+    card.innerHTML = `
+      <div class="flex items-center justify-between mb-3">
+        <span class="text-[10px] font-mono uppercase tracking-[0.2em] px-2 py-0.5 rounded-full border ${catColor[d.category] || ''}">${d.category}</span>
+        <span class="font-mono text-[10px] text-inkSoft">${d.id}</span>
+      </div>
+      <p class="font-display font-medium text-xl leading-snug text-ink mb-3">${d.prompt}</p>
+      <p class="text-xs text-inkSoft border-t border-line/30 pt-3"><strong class="text-ink">good answer mentions:</strong> ${d.expects}</p>
+      <span class="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition text-[10px] font-mono text-leafDeep">click to copy</span>
+    `;
+    card.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(d.prompt);
+        const note = document.createElement('div');
+        note.textContent = '✓ copied';
+        note.className = 'absolute top-3 right-3 text-[10px] font-mono px-2 py-0.5 rounded bg-leafDeep text-paper';
+        card.appendChild(note);
+        setTimeout(() => note.remove(), 1200);
+      } catch {}
+    });
+    grid.appendChild(card);
+  });
+}
+
+renderCards('all');
+
+// ---- category filter ----
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.remove('active','bg-leafDeep','text-paper');
+    });
+    btn.classList.add('active','bg-leafDeep','text-paper');
+    renderCards(btn.dataset.cat);
+  });
+});
+
+// ---- copy buttons on code blocks ----
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const target = document.getElementById(btn.dataset.target);
+    if (!target) return;
+    try {
+      await navigator.clipboard.writeText(target.innerText);
+      const orig = btn.textContent;
+      btn.textContent = '✓ copied';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    } catch {}
+  });
+});
+</script>
+
+</body>
+</html>

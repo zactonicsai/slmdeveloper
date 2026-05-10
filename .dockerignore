@@ -1,0 +1,16 @@
+# keep the trainer build context small
+.git
+.github
+output/
+**/__pycache__/
+**/*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+tests/
+webui/
+README.md
+*.md
+docker-compose.yml
+.dockerignore

@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html><head><script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-gray-900 text-white p-4">
+<div class="max-w-2xl mx-auto">
+  <div id="chat" class="h-96 overflow-y-auto bg-gray-800 p-4 rounded"></div>
+  <input id="msg" class="w-full p-2 bg-gray-700 rounded" placeholder="Ask...">
+  <button onclick="send()" class="bg-blue-600 px-4 py-2">Send</button>
+  <input id="file" type="file" onchange="uploadFile()">
+</div>
+<script>
+async function send(){ let m=document.getElementById('msg').value; let r=await fetch('/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({msg:m})}); let d=await r.json(); document.getElementById('chat').innerHTML+=`<div class="mb-2"><b>You:</b> ${m}</div><div><b>AI:</b> ${d.reply}</div>`; }
+async function uploadFile(){ let f=document.getElementById('file').files[0]; let fd=new FormData(); fd.append('file',f); await fetch('/upload',{method:'POST',body:fd}); alert('Template uploaded to ChromaDB'); }
+</script></body></html>
