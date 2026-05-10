@@ -1,0 +1,84 @@
+services:
+  slm-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: slm-lora-dev
+    working_dir: /workspace
+    environment:
+      MODEL_NAME: ${MODEL_NAME:-distilgpt2}
+      DATASET_PATH: ${DATASET_PATH:-/workspace/data/java_dto_dataset.jsonl}
+      OUTPUT_DIR: ${OUTPUT_DIR:-/workspace/outputs/java-dto-lora}
+      MERGED_DIR: ${MERGED_DIR:-/workspace/outputs/java-dto-merged-hf}
+      HF_HOME: /cache/huggingface
+      TRANSFORMERS_CACHE: /cache/huggingface
+      TORCH_HOME: /cache/torch
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - .:/workspace
+      - hf-cache:/cache/huggingface
+      - torch-cache:/cache/torch
+    ports:
+      - "7860:7860"
+    command: ["bash", "-lc", "python scripts/prepare_dataset.py && python scripts/check_env.py && tail -f /dev/null"]
+
+  slm-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: java-dto-slm-api
+    working_dir: /workspace
+    depends_on:
+      - slm-dev
+    environment:
+      MODEL_NAME: ${MODEL_NAME:-distilgpt2}
+      OUTPUT_DIR: ${OUTPUT_DIR:-/workspace/outputs/java-dto-lora}
+      HF_HOME: /cache/huggingface
+      TRANSFORMERS_CACHE: /cache/huggingface
+      TORCH_HOME: /cache/torch
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - .:/workspace
+      - hf-cache:/cache/huggingface
+      - torch-cache:/cache/torch
+    ports:
+      - "8000:8000"
+    command: ["bash", "-lc", "uvicorn scripts.slm_api:app --host 0.0.0.0 --port 8000"]
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama-java-dto
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./ollama:/workspace/ollama
+      - ./models:/models
+    restart: unless-stopped
+
+  # Creates the custom Ollama model with the Ollama CLI.
+  # This is more reliable than using /api/create from a minimal curl container.
+  ollama-setup:
+    image: ollama/ollama:latest
+    container_name: ollama-java-dto-setup
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - ./ollama:/workspace/ollama
+    entrypoint: ["/bin/sh", "-lc"]
+    command: >
+      "echo 'Waiting for Ollama...' &&
+       until ollama list >/dev/null 2>&1; do sleep 2; done &&
+       echo 'Pulling base model qwen2.5-coder:0.5b...' &&
+       ollama pull qwen2.5-coder:0.5b &&
+       echo 'Creating custom model java-dto-assistant from Modelfile...' &&
+       ollama create java-dto-assistant -f /workspace/ollama/Modelfile.java-dto-assistant &&
+       echo 'Done. Models now available:' &&
+       ollama list"
+
+volumes:
+  hf-cache:
+  torch-cache:
+  ollama-data:

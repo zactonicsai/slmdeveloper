@@ -1,0 +1,13 @@
+# CPU-only training stack. No bitsandbytes (CUDA-only) and no flash-attn.
+# Versions are pinned to ranges that are known to be mutually compatible
+# and to support the SmolLM2 / Llama LoRA path used by train_lora.py.
+
+torch>=2.2,<2.6
+transformers>=4.45,<4.50
+peft>=0.13,<0.16
+datasets>=2.20,<3.5
+accelerate>=0.34,<1.5
+sentencepiece>=0.2.0
+protobuf>=4.0
+safetensors>=0.4.3
+numpy<2

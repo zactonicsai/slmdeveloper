@@ -1,0 +1,99 @@
+services:
+  chromadb:
+    image: chromadb/chroma
+    container_name: slm-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chromadb_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama
+    container_name: slm-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./gguf:/gguf:ro          # GGUF artifacts produced by trainer
+      - ./Modelfile:/Modelfile:ro
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_KEEP_ALIVE=24h
+    healthcheck:
+      test: ["CMD-SHELL", "ollama --version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  trainer:
+    build:
+      context: .
+      dockerfile: docker/trainer.Dockerfile
+    container_name: slm-trainer
+    env_file: .env
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - OLLAMA_HOST=ollama
+      - OLLAMA_PORT=11434
+      - HF_HOME=/cache/hf
+      - TRANSFORMERS_CACHE=/cache/hf
+    volumes:
+      - ./:/workspace
+      - hf-cache:/cache/hf
+    working_dir: /workspace
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  inference:
+    build:
+      context: .
+      dockerfile: docker/inference.Dockerfile
+    container_name: slm-inference
+    env_file: .env
+    environment:
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - OLLAMA_HOST=ollama
+      - OLLAMA_PORT=11434
+      - HF_HOME=/cache/hf
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./adapters:/workspace/adapters:ro
+      - ./src:/workspace/src:ro
+      - hf-cache:/cache/hf
+    working_dir: /workspace
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    command: uvicorn src.inference_server:app --host 0.0.0.0 --port 8080
+
+volumes:
+  hf-cache:
+  ollama-data:

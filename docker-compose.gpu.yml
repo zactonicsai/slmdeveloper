@@ -1,0 +1,50 @@
+# Optional NVIDIA GPU override.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build -d
+#
+# Requirements:
+#   - NVIDIA driver installed on host
+#   - NVIDIA Container Toolkit installed
+#
+# Note:
+#   The base Dockerfile installs CPU PyTorch by default.
+#   For serious GPU training, switch the Dockerfile to a CUDA PyTorch image
+#   or install the matching CUDA wheel for your host driver.
+
+services:
+  slm-dev:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+  slm-api:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
